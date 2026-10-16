@@ -1,0 +1,20 @@
+# macOS / editors
+.DS_Store
+.vscode/
+.idea/
+
+# Downloaded models, runtimes and keys live in ~/Library/Application Support/nCaption,
+# but never commit them if they end up here by accident.
+*.bin
+*.part
+whisper-cli
+whisper-cli.zip
+keys.json
+
+# Packaged builds and test renders
+*.zxp
+*.wav
+*.mp4
+*.mov
+
+node_modules/

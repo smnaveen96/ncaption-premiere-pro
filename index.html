@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <h4 id="plugin-heading">nCaption</h4>
+    <div id="env-banner" class="banner" style="display:none"></div>
+
+    <div class="tabs" role="tablist">
+      <button id="tab-btn-captions" class="tab-btn active" role="tab" aria-selected="true" type="button">Captions</button>
+      <button id="tab-btn-render" class="tab-btn" role="tab" aria-selected="false" type="button">Render &amp; Compress</button>
+    </div>
+
+    <div id="tab-captions" class="tab-panel">
+    <section>
+      <div class="label">1 · Transcribe from timeline</div>
+      <details>
+        <summary>Models <span id="models-summary" class="summary-sel"></span></summary>
+        <div id="tools" class="hint"></div>
+        <div id="models"></div>
+      </details>
+      <div class="row" style="margin-top:8px">
+        <button id="btnTranscribe" class="primary">Transcribe selected clips</button>
+        <button id="btnCancelTx" class="pick" style="display:none">Cancel</button>
+      </div>
+      <div class="progress"><div id="tx-fill"></div></div>
+      <div id="tx-status" class="hint"></div>
+      <details id="tx-details" style="display:none; margin-top:6px">
+        <summary>Transcript</summary>
+        <div class="row" style="margin-bottom:6px; align-items:center">
+          <input id="tx-search" type="text" placeholder="Search transcript" autocomplete="off" aria-label="Search transcript" />
+          <span id="tx-copy-status" class="hint" style="margin:0; white-space:nowrap" role="status" aria-live="polite"></span>
+          <button id="btnCopyTranscript" class="icon-button" type="button" title="Copy transcript" aria-label="Copy transcript">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 5V2.75A.75.75 0 0 1 5.75 2h7.5a.75.75 0 0 1 .75.75v8.5a.75.75 0 0 1-.75.75H11M2 5.75A.75.75 0 0 1 2.75 5h7.5a.75.75 0 0 1 .75.75v8.5a.75.75 0 0 1-.75.75h-7.5A.75.75 0 0 1 2 14.25z"/></svg>
+          </button>
+        </div>
+        <div id="tx-text"></div>
+      </details>
+      <div class="row" style="margin-top:10px">
+        <button id="btnSrt" class="pick">Import SRT</button>
+        <div class="field" id="srt-field"><span id="srt-name">…or drag &amp; drop an .srt file here</span></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="split">
+        <div class="label">2 · Phrase length</div>
+        <div id="chars-value" class="value">20</div>
+      </div>
+      <div class="unit-switch" role="radiogroup" aria-label="Phrase length unit">
+        <label><input type="radio" name="phrase-unit" value="characters" checked /> Characters</label>
+        <label><input type="radio" name="phrase-unit" value="words" /> Words</label>
+      </div>
+      <input id="chars-input" type="range" min="5" max="60" value="20" />
+      <div id="phrase-summary" class="hint">Transcribe or import an SRT to see the phrase count.</div>
+    </section>
+
+    <section>
+      <div class="label">3 · AI cleanup <span class="value">(optional)</span></div>
+      <details>
+        <summary>Provider &amp; API key <span id="provider-summary" class="summary-sel"></span></summary>
+        <div class="provider-switch" role="radiogroup" aria-label="AI provider">
+          <label><input type="radio" name="provider" value="claude" checked /> Claude</label>
+          <label><input type="radio" name="provider" value="openai" /> OpenAI</label>
+        </div>
+        <div class="row">
+          <select id="ai-model" aria-label="AI model" disabled></select>
+          <button id="btnRefreshModels" class="pick">Load models</button>
+        </div>
+        <div id="model-status" class="hint"></div>
+        <div class="row">
+          <input id="ai-key" type="password" placeholder="Paste API key" autocomplete="off" />
+          <button id="btnSaveKey" class="pick" style="min-width:70px">Save</button>
+        </div>
+        <div class="split"><div id="key-status" class="hint"></div><button id="btnRemoveKey" class="link" style="display:none">Remove</button></div>
+      </details>
+      <details>
+        <summary>Prompts (client guidelines) <span id="prompt-summary" class="summary-sel"></span></summary>
+        <div class="row" style="margin-top:8px">
+          <select id="prompt-select"></select>
+          <button id="btnPromptNew" class="small">New</button>
+          <button id="btnPromptDup" class="small">Duplicate</button>
+          <button id="btnPromptDel" class="small">Delete</button>
+        </div>
+        <div class="row"><input id="prompt-name" type="text" placeholder="Prompt name, e.g. Client A" /></div>
+        <textarea id="prompt-text" placeholder="Brand guidelines, spellings, tone… e.g. Always write 'Acme Cloud' with capital letters. No exclamation marks."></textarea>
+        <div class="split" style="margin-top:6px"><div id="prompt-status" class="hint"></div><button id="btnPromptSave" class="small">Save prompt</button></div>
+      </details>
+      <div class="row" style="margin-top:8px">
+        <button id="btnClean" class="primary" disabled>Clean up captions</button>
+        <button id="btnCancelAi" class="pick" style="display:none">Cancel</button>
+      </div>
+      <div class="progress"><div id="ai-fill"></div></div>
+      <div id="ai-status" class="hint"></div>
+      <details id="review" style="display:none; margin-top:6px" open>
+        <summary id="review-title">Review changes</summary>
+        <div class="split" style="margin-bottom:6px; justify-content:flex-end">
+          <div><button id="btnAll" class="link">All</button> · <button id="btnNone" class="link">None</button></div>
+        </div>
+        <div id="review-list"></div>
+        <div class="row" style="margin-top:8px">
+          <button id="btnApply" class="primary">Apply selected changes</button>
+          <button id="btnDiscard" class="pick" style="margin-left:8px">Discard</button>
+        </div>
+      </details>
+    </section>
+
+    <section>
+      <div class="label">4 · Caption style (MOGRT)</div>
+      <div class="row">
+        <select id="mogrt-select"></select>
+        <button id="btnAddMogrt" class="pick">Add…</button>
+        <button id="btnDeleteMogrt" class="pick danger-pick" style="display:none">Delete</button>
+      </div>
+    </section>
+
+    <section>
+      <div class="split">
+        <div class="label">Place on video track</div>
+        <select id="track-select"></select>
+      </div>
+    </section>
+
+    <div class="insert-wrap">
+      <div class="row">
+        <button id="btnInsert" class="primary create-primary" disabled style="flex:1">Create subs</button>
+        <button id="btnExportSrt" class="pick" disabled>Export SRT</button>
+      </div>
+      <div class="progress"><div id="progress-fill"></div></div>
+      <div id="insert-overlay" class="insert-overlay" style="display:none" aria-live="polite">
+        <span class="spinner"></span>
+        <span id="insert-overlay-text">Creating captions…</span>
+      </div>
+    </div>
+
+    <section>
+      <div class="label">5 · Copy / paste style</div>
+      <div class="row">
+        <button id="btnCopyAttrs" class="pick">Copy</button>
+        <button id="btnPasteAttrs" class="pick" disabled>Paste</button>
+        <button id="btnSyncAllAttrs" class="primary">Sync All</button>
+      </div>
+      <div class="split"><div id="attrs-status" class="hint"></div><div><button id="btnUndoAttrs" class="link" style="display:none" title="Undo the last Paste or Sync All in one step">Undo</button><button id="btnRedoAttrs" class="link" style="display:none" title="Redo the Paste or Sync All you just undid">Redo</button></div></div>
+    </section>
+    </div><!-- /#tab-captions -->
+
+    <div id="tab-render" class="tab-panel" style="display:none">
+      <section>
+        <div class="label">1 · Render sequence</div>
+      </section>
+
+      <section>
+        <div class="label">Range</div>
+        <div class="unit-switch" role="radiogroup" aria-label="Render range">
+          <label><input type="radio" name="render-range" value="entire" checked /> Full Sequence</label>
+          <label><input type="radio" name="render-range" value="inout" /> In/Out</label>
+        </div>
+        <div class="hint">"In/Out" uses the sequence's current In/Out points, set in the timeline.</div>
+      </section>
+
+      <section>
+        <div class="split">
+          <div class="label">Output format</div>
+          <select id="render-format">
+            <option value="mp4" selected>MP4 (H.264)</option>
+            <option value="mov">MOV (preserves transparency)</option>
+          </select>
+        </div>
+      </section>
+
+      <section>
+        <div class="label">Compression</div>
+        <div class="unit-switch" role="radiogroup" aria-label="Compression level">
+          <label><input type="radio" name="render-tier" value="normal" checked /> Normal</label>
+          <label><input type="radio" name="render-tier" value="medium" /> Medium</label>
+          <label><input type="radio" name="render-tier" value="small" /> Small</label>
+        </div>
+      </section>
+
+      <section>
+        <div class="label">Save to</div>
+        <div class="row">
+          <div class="field" id="render-folder-field"><span id="render-folder-name">Choose an output folder…</span></div>
+          <button id="btnRenderFolder" class="pick">Choose…</button>
+        </div>
+      </section>
+
+      <div class="insert-wrap">
+        <button id="btnRender" class="primary create-primary" disabled>Render &amp; Compress</button>
+        <div class="progress"><div id="render-fill"></div></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="btnCancelRender" class="pick" style="display:none">Cancel</button>
+        <button id="btnShowInFolder" class="pick" style="display:none">Show in Finder</button>
+      </div>
+      <div id="render-status" class="hint"></div>
+    </div><!-- /#tab-render -->
+
+    <details id="log-details">
+      <summary>Log</summary>
+      <div class="split" style="margin-bottom:8px">
+        <span id="copy-status" class="hint" role="status" aria-live="polite"></span>
+        <div class="log-actions">
+          <button id="copy-log" class="icon-button" type="button" title="Copy log" aria-label="Copy log">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 5V2.75A.75.75 0 0 1 5.75 2h7.5a.75.75 0 0 1 .75.75v8.5a.75.75 0 0 1-.75.75H11M2 5.75A.75.75 0 0 1 2.75 5h7.5a.75.75 0 0 1 .75.75v8.5a.75.75 0 0 1-.75.75h-7.5A.75.75 0 0 1 2 14.25z"/></svg>
+          </button>
+          <button id="clear-btn" class="link">Clear</button>
+        </div>
+      </div>
+      <div class="main-div"><div id="plugin-body"></div></div>
+    </details>
+
+    <script>
+      // Show any startup error inside the panel's log.
+      window.onerror = function (msg, src, line) {
+        var d = document.getElementById("plugin-body");
+        if (d) {
+          var entry = document.createElement("span");
+          entry.className = "err";
+          entry.textContent = "JS error: " + String(msg) + " (" + String(src || "").split("/").pop() + ":" + line + ")";
+          d.appendChild(entry);
+          d.appendChild(document.createElement("br"));
+        }
+      };
+    </script>
+    <script src="lib/CSInterface.js"></script>
+    <script src="js/srt.js"></script>
+    <script src="js/diff.js"></script>
+    <script src="js/models.js"></script>
+    <script src="js/transcribe.js"></script>
+    <script src="js/keystore.js"></script>
+    <script src="js/prompts.js"></script>
+    <script src="js/ai.js"></script>
+    <script src="js/compress.js"></script>
+    <script src="js/main.js"></script>
+    <script src="js/render.js"></script>
+    <script src="js/sync.js"></script>
+  </body>
+</html>
