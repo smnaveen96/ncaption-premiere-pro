@@ -27,27 +27,68 @@ Transcribe on your own machine with Whisper, or import an SRT. Split the text in
 - **Adobe Premiere Pro 2022 (v22) or later.** This is a CEP panel.
 - **macOS.** Windows paths exist in the code but haven't been tested.
 - **FFmpeg**, for audio extraction and compression: `brew install ffmpeg`.
-- **Heebo font**, for the bundled `ncaption.mogrt`. MOGRTs don't embed fonts. It's free on [Google Fonts](https://fonts.google.com/specimen/Heebo).
 - **Optional:** a Claude or OpenAI API key for AI cleanup.
 
 Whisper itself needs no setup. The panel downloads the models you choose and a small `whisper-cli` runtime for your Mac (Apple Silicon or Intel). Every download is checked against a pinned SHA-256 checksum.
 
 ## Install
 
-The panel isn't signed, so Premiere has to be told to load unsigned extensions.
+The panel isn't signed, so Premiere has to be told to load unsigned extensions. Install takes three steps.
 
-1. Allow unsigned panels (run once in Terminal):
-   ```sh
-   defaults write com.adobe.CSXS.11 PlayerDebugMode 1
-   defaults write com.adobe.CSXS.12 PlayerDebugMode 1
-   ```
-2. Put this folder in Premiere's extensions folder:
-   ```sh
-   git clone <this-repo-url> ~/Library/Application\ Support/Adobe/CEP/extensions/ncaption-cep
-   ```
-3. Restart Premiere Pro, then open **Window → Extensions → nCaption**.
+### 1. Put the folder in Premiere's extensions folder
 
-To update later, run `git pull` in that folder and reopen the panel.
+Download the ZIP from the latest release (or **Code → Download ZIP**) and unzip it. Then move the folder here and rename it `ncaption-cep`:
+
+| | Extensions folder |
+| --- | --- |
+| **macOS** | `~/Library/Application Support/Adobe/CEP/extensions/` |
+| **Windows** | `%APPDATA%\Adobe\CEP\extensions\` (usually `C:\Users\<you>\AppData\Roaming\Adobe\CEP\extensions\`) |
+
+If the `CEP` or `extensions` folder doesn't exist yet, create it.
+
+On macOS, `~/Library` is hidden. In Finder, choose **Go → Go to Folder…** and paste the path. On Windows, paste the path into File Explorer's address bar.
+
+The result should look like this. `CSXS` must sit directly inside `ncaption-cep`, not one folder deeper:
+
+```
+extensions/
+└── ncaption-cep/
+    ├── CSXS/manifest.xml
+    ├── index.html
+    ├── js/
+    └── jsx/
+```
+
+With git, you can clone straight into place instead:
+
+```sh
+# macOS
+git clone <this-repo-url> ~/Library/Application\ Support/Adobe/CEP/extensions/ncaption-cep
+# Windows (Command Prompt)
+git clone <this-repo-url> "%APPDATA%\Adobe\CEP\extensions\ncaption-cep"
+```
+
+### 2. Allow unsigned panels (run once)
+
+**macOS:** in Terminal:
+```sh
+defaults write com.adobe.CSXS.11 PlayerDebugMode 1
+defaults write com.adobe.CSXS.12 PlayerDebugMode 1
+```
+
+**Windows:** in Command Prompt:
+```bat
+reg add HKCU\Software\Adobe\CSXS.11 /v PlayerDebugMode /t REG_SZ /d 1 /f
+reg add HKCU\Software\Adobe\CSXS.12 /v PlayerDebugMode /t REG_SZ /d 1 /f
+```
+
+### 3. Open it
+
+Quit and reopen Premiere Pro, then choose **Window → Extensions → nCaption**.
+
+To update later, replace the folder with the new version, or run `git pull` inside it. Then reopen the panel.
+
+> Windows support hasn't been tested yet. Please open an issue if something doesn't work.
 
 ## First run
 
