@@ -123,3 +123,5 @@ To update later, replace the folder with the new version, or run `git pull` insi
 ## License
 
 [MIT](LICENSE). `lib/CSInterface.js` is Adobe's CEP library, distributed under Adobe's own terms.
+
+<--level Documentation update -->
