@@ -7,6 +7,25 @@
   <body>
     <h4 id="plugin-heading">nCaption</h4>
     <div id="env-banner" class="banner" style="display:none"></div>
+    <div id="ffmpeg-banner" class="setup-banner" style="display:none" role="status" aria-live="polite">
+      <div class="setup-head">
+        <div id="ffmpeg-title" class="setup-title"></div>
+        <button id="btnFfmpegClose" class="setup-close" type="button" title="Close" aria-label="Close">×</button>
+      </div>
+      <div id="ffmpeg-steps">
+        <div id="ffmpeg-lead" class="setup-text"></div>
+        <div class="cmd-row">
+          <code id="ffmpeg-cmd" title="Click to select"></code>
+          <button id="btnFfmpegCopy" class="small" type="button">Copy</button>
+          <button id="btnFfmpegTerminal" class="small" type="button">Open Terminal</button>
+        </div>
+        <div id="ffmpeg-error" class="setup-error" style="display:none"></div>
+        <div class="split setup-foot">
+          <span id="ffmpeg-note" class="hint"></span>
+          <button id="btnFfmpegCheck" class="link" type="button">Check again</button>
+        </div>
+      </div>
+    </div>
 
     <div class="tabs" role="tablist">
       <button id="tab-btn-captions" class="tab-btn active" role="tab" aria-selected="true" type="button">Captions</button>

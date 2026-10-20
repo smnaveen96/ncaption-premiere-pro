@@ -200,7 +200,12 @@ input[type=range] { accent-color:#d5d5d5; }
   border:1px solid var(--border);
   border-radius:7px;
 }
+/* The whole row is the control (see renderModels), so it reads as one. */
+.model { cursor:pointer; transition:background-color .12s ease,border-color .12s ease; }
+.model:hover { background:#1f1f1f; border-color:#5e5e5e; }
 .model.sel { border-color:#aaa; }
+.model.sel:hover { border-color:#c9c9c9; }
+.model .state button { cursor:pointer; }
 .model input[type=radio] { width:16px; height:16px; flex:0 0 auto; }
 .model .name { flex:1; min-width:0; line-height:1.35; }
 .model .meta { color:var(--muted); font-size:11px; }
@@ -365,3 +370,73 @@ label.radio { display:flex; align-items:center; gap:6px; min-height:32px; cursor
   .model .bar { width:38px; }
   .unit-switch { max-width:100%; }
 }
+
+/* ---------- Setup banner (FFmpeg install steps) ---------- */
+.setup-banner {
+  margin-bottom:14px;
+  padding:10px 12px;
+  background:#2b2415;
+  border:1px solid #7d6424;
+  border-radius:8px;
+  color:#f4e8c8;
+  line-height:1.45;
+}
+.setup-banner.done { background:#1b2b22; border-color:#3f7a57; color:#d9f0e1; }
+.setup-head { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+.setup-title { flex:1; min-width:0; padding-top:3px; }
+.setup-title b { color:#fff; }
+.setup-close {
+  flex:0 0 auto;
+  width:26px;
+  height:26px;
+  min-width:26px;
+  min-height:26px;
+  padding:0;
+  border-radius:50%;
+  background:transparent;
+  border-color:transparent;
+  color:inherit;
+  font-size:18px;
+  line-height:1;
+}
+.setup-close:hover { background:rgba(255,255,255,.12); border-color:transparent; }
+.setup-text { margin-top:8px; }
+/* Wraps when the panel is narrow: the command keeps a full line, the buttons drop below it. */
+.cmd-row { display:flex; flex-wrap:wrap; align-items:stretch; gap:8px; margin-top:8px; }
+.cmd-row button { white-space:nowrap; }
+.cmd-row code {
+  flex:1 1 160px;
+  display:flex;
+  align-items:center;
+  min-width:0;
+  min-height:34px;
+  padding:0 12px;
+  background:#141414;
+  border:1px solid #4a4a4a;
+  border-radius:8px;
+  color:#fff;
+  font-family:Menlo,monospace;
+  font-size:12px;
+  white-space:nowrap;
+  overflow-x:auto;
+  cursor:text;
+  -webkit-user-select:all;
+  user-select:all;
+}
+.cmd-row code::before { content:"$ "; color:var(--muted); -webkit-user-select:none; user-select:none; }
+.setup-error { margin-top:6px; font-family:Menlo,monospace; font-size:10px; line-height:1.4; color:#cbbf9d; overflow-wrap:anywhere; }
+.setup-foot { margin-top:6px; }
+.setup-banner .hint { margin:0; color:#cbbf9d; }
+.setup-banner.done .hint { color:#9fcfb3; }
+.inline-link {
+  min-height:0;
+  padding:0;
+  background:none;
+  border:0;
+  border-radius:0;
+  color:inherit;
+  font:inherit;
+  text-decoration:underline;
+  cursor:pointer;
+}
+.inline-link:hover { background:none; border:0; color:#fff; }

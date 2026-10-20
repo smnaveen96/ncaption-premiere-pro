@@ -174,7 +174,11 @@
   async function renderAndCompress() {
     if (renderBusy) return;
     const tools = NC.tx.tools();
-    if (!tools.ffmpeg) return log("FFmpeg is missing — it's required for the compression step. Install it or add it to the panel's PATH, then restart Premiere.", true);
+    // Checked before rendering, so a long render isn't wasted on a
+    // compression step that can't run. ensure() shows the banner with the
+    // right steps (install or repair) when FFmpeg isn't usable.
+    const ff = NC.ffmpeg ? await NC.ffmpeg.ensure() : { ok: !!tools.ffmpeg, error: "FFmpeg isn't installed" };
+    if (!ff.ok) return log(`${ff.error} — it's required for the compression step. Follow the steps at the top of the panel.`, true);
     const folder = renderFolder();
     if (!folder) return log("Choose an output folder first.", true);
     const format = $("render-format").value;

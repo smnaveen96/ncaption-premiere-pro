@@ -26,7 +26,7 @@ Transcribe on your own machine with Whisper, or import an SRT. Split the text in
 
 - **Adobe Premiere Pro 2022 (v22) or later.** This is a CEP panel.
 - **macOS.** Windows paths exist in the code but haven't been tested.
-- **FFmpeg**, for audio extraction and compression: `brew install ffmpeg`.
+- **FFmpeg**, for audio extraction and compression: `brew install ffmpeg`. If it isn't installed, the panel shows that command with a Copy button at the top and notices by itself once the install finishes. If it's installed but can't start (a Homebrew upgrade can break it), the panel says so and shows `brew reinstall ffmpeg` instead.
 - **Optional:** a Claude or OpenAI API key for AI cleanup.
 
 Whisper itself needs no setup. The panel downloads the models you choose and a small `whisper-cli` runtime for your Mac (Apple Silicon or Intel). Every download is checked against a pinned SHA-256 checksum.
@@ -129,7 +129,7 @@ To update later, replace the folder with the new version, or run `git pull` insi
 
 ## Known limitations
 
-- Premiere flickers briefly while captions are being placed. That's Premiere redrawing as each clip is added, and scripts can't pause it.
+- Captions are placed from a single imported template, so inserting them is fast and the Program Monitor no longer flickers. If a placed caption ever fails its checks, the panel falls back to importing that caption on its own, which is slower but safe, and says so in the log.
 - Premiere's scripting can't read keyframe easing, so Copy / Sync All skips animated (keyframed) controls rather than flattening them.
 
 ## License

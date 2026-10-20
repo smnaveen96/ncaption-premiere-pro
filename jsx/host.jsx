@@ -87,10 +87,11 @@ function ncParkPlayhead(seq, until) {
 }
 
 // Called once by the panel after the whole insert run finishes — success,
-// failure, or cancelled partway — so the playhead always gets put back
+// failure, or cancelled partway — so the playhead always gets put back and
+// the run's state (its project item and clip references) is dropped,
 // regardless of how the run ended, rather than threading a "last batch"
 // flag through ncInsertBatch that an early error could skip past.
-function ncRestorePlayhead() {
+function ncEndInsertRun() {
   try {
     var seq = app.project.activeSequence;
     if (seq && $.global.ncSavedPlayhead !== undefined) {
@@ -98,52 +99,175 @@ function ncRestorePlayhead() {
     }
   } catch (e) {}
   $.global.ncSavedPlayhead = undefined;
+  $.global.ncInsertRun = undefined;
   return '{"ok":true}';
+}
+function ncRestorePlayhead() { return ncEndInsertRun(); } // the name older panel builds call
+
+// The words of a MOGRT text param, unescaped; null if unreadable.
+function ncReadText(param) {
+  try {
+    var v = param.getValue();
+    if (typeof v !== "string") return null;
+    var m = NC_TEXT_RE.exec(v);
+    return m ? ncUnescapeJson(m[1]) : v;
+  } catch (e) { return null; }
+}
+
+// Whitespace-insensitive form of a caption's words, for comparing what was
+// written with what reads back (ncSetText stores newlines as \r).
+function ncSquash(s) {
+  return String(s).replace(/\s+/g, " ").replace(/^ | $/g, "");
+}
+
+function ncFrameSeconds(seq) {
+  var f = 0;
+  try { f = Number(seq.timebase) / TICKS_PER_SECOND; } catch (e) {}
+  return f > 0 && isFinite(f) ? f : 1 / 30;
+}
+
+// Index of the clip in `clips` that starts at startSec (within tol seconds),
+// looking from index `from` on. Clips come in time order, so the scan stops
+// as soon as it is past that time. -1 if there's none.
+function ncClipIndexAt(clips, from, startSec, tol) {
+  var best = -1, bestD = tol;
+  for (var k = from; k < clips.numItems; k++) {
+    var s = Number(clips[k].start.seconds);
+    if (s > startSec + tol) break;
+    var d = Math.abs(s - startSec);
+    if (d <= bestD) { best = k; bestD = d; }
+  }
+  return best;
+}
+
+// Quick placement: another clip of the run's first caption, put on the track
+// from its project item with track.overwriteClip() — what dragging that item
+// from the Project panel onto the track does, a plain timeline edit rather
+// than a template import. overwriteClip() doesn't hand back the new clip
+// (per Adobe, matching start times is the only way to get it), so it's found
+// on the track by its start, scanning on from the previous caption, and
+// confirmed to come from the run's project item. Returns the new TrackItem,
+// or null, in which case the caller imports the template instead.
+function ncPlaceFromTemplate(seq, track, run, ticks, startSec) {
+  try {
+    track.overwriteClip(run.projItem, ticks);
+    var clips = track.clips, tol = ncFrameSeconds(seq);
+    var k = ncClipIndexAt(clips, run.scanFrom, startSec, tol);
+    if (k < 0 && run.scanFrom > 0) k = ncClipIndexAt(clips, 0, startSec, tol);
+    if (k < 0) return null;
+    var item = clips[k];
+    if (run.projNodeId && String(item.projectItem.nodeId) !== run.projNodeId) return null;
+    run.scanFrom = k;
+    return item;
+  } catch (e) { return null; }
+}
+
+// A placed clip that didn't check out: removed (no ripple), and the rest of
+// the run goes through importMGT.
+function ncDropPlaced(item, run) {
+  run.fast = false;
+  try { item.remove(0, 0); } catch (e) {}
 }
 
 // Batch insert: one call handles many cues, so Premiere redraws far less.
+//
+// Only the first caption of a run goes through importMGT. That is the costly
+// call — it reads the template file and creates a project item every time —
+// and it was what made long runs slow and the screen flash per caption.
+// Every caption after it is placed from that first caption's project item
+// (ncPlaceFromTemplate), which is quick and leaves the Project panel alone.
+// Checked before being relied on: the first placed caption has its words
+// read back, and the first caption's words are re-read, to confirm the two
+// clips hold separate text — if anything about a placed clip is off, it's
+// removed and the run carries on with importMGT for every caption.
 // The text parameter's index is found once (first clip) and reused after.
+// Returns how many captions went each way (fast / slow) for the panel's log.
 function ncInsertBatch(argJson) {
-  var done = 0;
+  var done = 0, fast = 0, slow = 0;
+  function fail(err, extra) {
+    return '{"ok":false,"done":' + done + ',"fast":' + fast + ',"slow":' + slow +
+      ',"error":' + ncJsonStr(err) + (extra || "") + "}";
+  }
   try {
     var a = (typeof argJson === "string") ? eval("(" + argJson + ")") : argJson;
     var seq = app.project.activeSequence;
-    if (!seq) return '{"ok":false,"done":0,"error":"No active sequence"}';
-    if (a.first) {
-      $.global.ncTextIdx = -1;
-      ncParkPlayhead(seq, a.until);
+    if (!seq) return fail("No active sequence");
+    var run = $.global.ncInsertRun;
+    if (a.first || !run) {
+      run = $.global.ncInsertRun = {
+        textIdx: -1, projItem: null, projNodeId: "", firstParam: null, firstText: null,
+        verified: false, fast: true, scanFrom: 0
+      };
+      if (a.first) ncParkPlayhead(seq, a.until);
     }
-    if ($.global.ncTextIdx === undefined) $.global.ncTextIdx = -1;
+    var track = seq.videoTracks[a.track];
+    if (!track) return fail("Video track V" + (a.track + 1) + " doesn't exist");
 
     for (var i = 0; i < a.cues.length; i++) {
       var c = a.cues[i];
-      var item = seq.importMGT(a.mogrt, String(Math.round(c.start * TICKS_PER_SECOND)), a.track, a.track);
-      if (!item) return '{"ok":false,"done":' + done + ',"error":"importMGT returned nothing (check the MOGRT path and track number)"}';
+      var ticks = String(Math.round(c.start * TICKS_PER_SECOND));
+      var item = null, placed = false;
+      if (run.fast && run.projItem) {
+        item = ncPlaceFromTemplate(seq, track, run, ticks, c.start);
+        if (item) placed = true; else run.fast = false;
+      }
+      if (!item) {
+        item = seq.importMGT(a.mogrt, ticks, a.track, a.track);
+        if (!item) return fail("importMGT returned nothing (check the MOGRT path and track number)");
+      }
       var comp = item.getMGTComponent();
-      if (!comp) return '{"ok":false,"done":' + done + ',"error":"Clip has no MOGRT component"}';
+      if (!comp) {
+        if (placed) { ncDropPlaced(item, run); i--; continue; }
+        return fail("Clip has no MOGRT component");
+      }
 
       var param = null;
-      if ($.global.ncTextIdx >= 0) param = comp.properties[$.global.ncTextIdx];
+      if (run.textIdx >= 0) param = comp.properties[run.textIdx];
       if (!param) {
         var found = ncFindTextParam(comp);
         if (!found.param) {
-          return '{"ok":false,"done":' + done + ',"error":"No text parameter found in this MOGRT","params":' + ncJsonStr(found.names) + "}";
+          if (placed) { ncDropPlaced(item, run); i--; continue; }
+          return fail("No text parameter found in this MOGRT", ',"params":' + ncJsonStr(found.names));
         }
         param = found.param;
         for (var k = 0; k < comp.properties.numItems; k++) {
-          if (comp.properties[k].displayName === param.displayName) { $.global.ncTextIdx = k; break; }
+          if (comp.properties[k].displayName === param.displayName) { run.textIdx = k; break; }
         }
       }
       ncSetText(param, c.text, i === a.cues.length - 1);
 
+      if (placed && !run.verified) {
+        // The same template instance twice: each clip must keep its own words.
+        var mine = ncReadText(param);
+        var theirs = run.firstText === c.text ? run.firstText : ncReadText(run.firstParam);
+        if (mine === null || ncSquash(mine) !== ncSquash(c.text) || theirs !== run.firstText) {
+          ncDropPlaced(item, run);
+          if (theirs !== run.firstText) { try { ncSetText(run.firstParam, run.firstText, false); } catch (e) {} }
+          i--; continue;
+        }
+        // Proven only once the two captions' words differ; identical ones
+        // (two "Yeah."s) can't tell shared text from separate text.
+        if (run.firstText !== c.text) run.verified = true;
+      }
+      if (!placed && !run.projItem) {
+        try {
+          run.projItem = item.projectItem;
+          run.projNodeId = String(run.projItem.nodeId || "");
+          run.firstParam = param;
+          run.firstText = ncReadText(param);
+          if (!run.projItem || run.firstText === null) run.fast = false;
+        } catch (e) { run.fast = false; }
+      }
+
       var t = new Time();
       t.seconds = c.end;
       item.end = t;
+      if (placed) fast++; else slow++;
       done++;
     }
-    return '{"ok":true,"done":' + done + "}";
+    return '{"ok":true,"done":' + done + ',"fast":' + fast + ',"slow":' + slow + "}";
   } catch (e) {
-    return '{"ok":false,"done":' + done + ',"error":' + ncJsonStr(e.toString()) + "}";
+    return fail(e.toString());
   }
 }
 

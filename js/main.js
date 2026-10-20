@@ -119,7 +119,8 @@
       s.textContent = `${ok ? "✓" : "✗"} ${name}`;
       return s;
     };
-    summary.append(mark(t.ffmpeg, "ffmpeg"), mark(t.whisper, "whisper-cli"));
+    const broken = !!t.ffmpeg && ffmpegUi.state() === "broken";
+    summary.append(mark(t.ffmpeg && !broken, broken ? "ffmpeg (can't start)" : "ffmpeg"), mark(t.whisper, "whisper-cli"));
     box.appendChild(summary);
 
     const note = (text) => { const d = document.createElement("div"); d.className = "hint"; d.textContent = text; box.appendChild(d); };
@@ -127,10 +128,216 @@
     note("Models use 8-bit quantized weights for faster transcription (Metal/GPU-accelerated on Apple Silicon), with minimal quality loss.");
     if (!t.whisper && process.platform === "darwin")
       note("Whisper's small runtime downloads automatically with a Whisper model.");
-    if (!t.ffmpeg)
-      note("FFmpeg is required to extract audio from timeline clips. If it is already installed, restart Premiere so the panel can find it.");
+    if (!t.ffmpeg || broken) {
+      note(broken ? "FFmpeg is installed but can't start, so no audio can be extracted." : "FFmpeg is required to extract audio from timeline clips.");
+      const b = document.createElement("button");
+      b.className = "link"; b.type = "button"; b.textContent = broken ? "Show repair steps" : "Show install steps";
+      b.onclick = () => ffmpegUi.prompt();
+      box.appendChild(b);
+    }
     return t;
   }
+
+  // ---------- FFmpeg setup banner ----------
+  // Shown at the top of the panel while FFmpeg can't be used, with the one
+  // Terminal command that fixes it and a Copy button. Two things can be
+  // wrong, and the steps differ:
+  //   missing — no ffmpeg binary anywhere the panel looks: install it.
+  //   broken  — the binary is there but can't start. In practice Homebrew
+  //             upgraded one of FFmpeg's libraries without rebuilding
+  //             FFmpeg, so dyld aborts it at launch ("Library not loaded"):
+  //             reinstall it. An existence check can't see this, so FFmpeg
+  //             is actually started to find out (NC.tx.checkFfmpeg).
+  // While open, the banner re-checks every few seconds, so it notices the
+  // install or repair by itself: both checks are live, no Premiere restart
+  // is needed (except on Windows, where a new PATH only reaches Premiere
+  // after a restart, and the note says so). Closing it is remembered for
+  // that state; anything that needs FFmpeg brings it back (ensure()).
+  const ffmpegUi = (() => {
+    const box = $("ffmpeg-banner");
+    const isMac = hasNode && process.platform === "darwin";
+    const isWin = hasNode && process.platform === "win32";
+    const BREW = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"];
+    let poll = null, hideTimer = null, inflight = null;
+    let shown = null;      // what the open banner describes: "missing" | "broken" | "done"
+    let brewNote = false;  // the missing-state steps include "install Homebrew first"
+    let command = "";      // what Copy copies
+    let lastState = "ok";  // "ok" | "missing" | "broken", for the tools row
+
+    const hasBrew = () => !isMac || BREW.some((p) => { try { return fs.existsSync(p); } catch (e) { return false; } });
+    const isOpen = () => box.style.display !== "none";
+
+    // What the panel has: a working FFmpeg, a binary that can't start, or nothing.
+    async function status() {
+      let path = null;
+      try { path = NC.tx.tools().ffmpeg; } catch (e) {}
+      if (!path) return { state: "missing" };
+      const h = await NC.tx.checkFfmpeg(path);
+      return h.ok ? { state: "ok", path } : { state: "broken", path, error: h.error, lib: h.missingLib };
+    }
+    function noteState(st) {
+      if (lastState === st.state) return;
+      lastState = st.state;
+      renderTools();
+    }
+
+    function stopPolling() { if (poll) { clearInterval(poll); poll = null; } }
+    function hide() {
+      stopPolling();
+      if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+      box.style.display = "none";
+      shown = null;
+    }
+    function setCommand(cmd) {
+      command = cmd;
+      $("ffmpeg-cmd").textContent = cmd;
+    }
+    function open() {
+      box.classList.remove("done");
+      $("ffmpeg-steps").style.display = "";
+      $("btnFfmpegTerminal").style.display = isMac ? "" : "none";
+      box.style.display = "";
+      if (!poll) poll = setInterval(check, 3000);
+    }
+
+    function showMissing() {
+      shown = "missing";
+      $("ffmpeg-title").innerHTML = "<b>FFmpeg isn't installed yet.</b> nCaption needs it to read the audio from your timeline and to compress renders.";
+      $("ffmpeg-error").style.display = "none";
+      setCommand(isWin ? "winget install --id Gyan.FFmpeg -e" : "brew install ffmpeg");
+      const lead = $("ffmpeg-lead");
+      brewNote = isMac && !hasBrew();
+      if (brewNote) {
+        lead.innerHTML = "It installs with Homebrew, which isn't on this Mac yet. First install Homebrew from " +
+          '<button id="btnFfmpegBrew" class="inline-link" type="button">brew.sh</button> (one command, shown on that page). ' +
+          "Then paste this in Terminal and press Return:";
+        $("btnFfmpegBrew").onclick = () => cs.openURLInDefaultBrowser("https://brew.sh");
+      } else if (isWin) {
+        lead.textContent = "Paste this in a Command Prompt or PowerShell window and press Enter:";
+      } else {
+        lead.textContent = "Paste this in Terminal and press Return:";
+      }
+      $("ffmpeg-note").textContent = isWin
+        ? "When it finishes, quit and reopen Premiere so it picks up the new PATH."
+        : "It takes a few minutes. This panel checks every few seconds and will say when it's done.";
+      open();
+    }
+
+    function showBroken(st) {
+      shown = "broken";
+      $("ffmpeg-title").innerHTML = "<b>FFmpeg is installed but can't start.</b> nCaption needs it to read the audio from your timeline and to compress renders.";
+      const why = st.lib ? `A library it needs is missing (${st.lib}).` : "It quits the moment it launches.";
+      const lead = $("ffmpeg-lead");
+      if (isWin) {
+        setCommand("winget install --id Gyan.FFmpeg -e --force");
+        lead.textContent = `${why} Paste this in a Command Prompt or PowerShell window and press Enter to reinstall it:`;
+      } else if (/^\/(opt\/homebrew|usr\/local)\//.test(st.path)) {
+        setCommand("brew reinstall ffmpeg");
+        lead.textContent = `${why} That happens when Homebrew upgrades one of FFmpeg's libraries without rebuilding FFmpeg. Paste this in Terminal and press Return to repair it:`;
+      } else {
+        setCommand("brew reinstall ffmpeg");
+        lead.textContent = `${why} Reinstall FFmpeg the way it was installed (${st.path}). With Homebrew, that's:`;
+      }
+      const err = $("ffmpeg-error");
+      err.textContent = st.error || "";
+      err.style.display = st.error ? "" : "none";
+      $("ffmpeg-note").textContent = isWin
+        ? "When it finishes, click Check again."
+        : "It takes a few minutes. This panel checks every few seconds and will say when FFmpeg works again.";
+      open();
+    }
+
+    function showDone(path) {
+      shown = "done";
+      stopPolling();
+      box.classList.add("done");
+      $("ffmpeg-title").innerHTML = "<b>✓ FFmpeg works.</b> You're all set: transcription and Render &amp; Compress are ready.";
+      $("ffmpeg-steps").style.display = "none";
+      box.style.display = "";
+      log(`FFmpeg ready: ${path}`);
+      hideTimer = setTimeout(hide, 8000);
+    }
+
+    const render = (st) => { if (st.state === "broken") showBroken(st); else showMissing(); };
+
+    // Resolves true when FFmpeg works. An open banner follows the state:
+    // done once it works, and between missing and broken (or the Homebrew
+    // note) if the situation changes. One check runs at a time.
+    function check() {
+      if (inflight) return inflight;
+      inflight = (async () => {
+        const st = await status();
+        noteState(st);
+        if (st.state === "ok") {
+          if (isOpen() && shown !== "done") showDone(st.path);
+          else stopPolling();
+          return true;
+        }
+        if (isOpen() && shown !== "done") {
+          const stale = shown !== st.state || (st.state === "missing" && brewNote !== (isMac && !hasBrew()));
+          if (stale) render(st);
+        }
+        return false;
+      })().finally(() => { inflight = null; });
+      return inflight;
+    }
+
+    // For a feature that needs FFmpeg: resolves { ok, error }. When FFmpeg
+    // isn't usable, the banner with the right steps is shown — even if it
+    // was closed before, and that's forgotten.
+    async function ensure() {
+      if (!hasNode) return { ok: false, error: "FFmpeg can't be run without Node.js" };
+      const st = await status();
+      noteState(st);
+      if (st.state === "ok") {
+        if (isOpen() && shown !== "done") showDone(st.path);
+        return { ok: true, path: st.path };
+      }
+      store.set("ffmpeg-dismissed", "");
+      render(st);
+      try { box.scrollIntoView({ block: "nearest" }); } catch (e) {}
+      return { ok: false, error: st.state === "missing" ? "FFmpeg isn't installed" : `FFmpeg is installed but can't start (${st.error})` };
+    }
+
+    $("btnFfmpegClose").addEventListener("click", () => {
+      if (shown && shown !== "done") store.set("ffmpeg-dismissed", shown);
+      hide();
+    });
+    $("btnFfmpegCheck").addEventListener("click", async () => {
+      const note = $("ffmpeg-note");
+      note.textContent = "Checking…";
+      if (await check()) return;
+      note.textContent = "Still not working. If the command has finished, check that it ended without errors" + (isWin ? ", then restart Premiere." : ".");
+    });
+    $("btnFfmpegCopy").addEventListener("click", async () => {
+      const b = $("btnFfmpegCopy");
+      try { await copyTextToClipboard(command); b.textContent = "Copied ✓"; }
+      catch (e) { b.textContent = "Copy failed"; log(`Could not copy: ${e.message}`, true); }
+      setTimeout(() => { b.textContent = "Copy"; }, 1800);
+    });
+    $("btnFfmpegTerminal").addEventListener("click", () => {
+      try { spawn("/usr/bin/open", ["-a", "Terminal"]).on("error", (e) => log(`Could not open Terminal: ${e.message}`, true)); }
+      catch (e) { log(`Could not open Terminal: ${e.message}`, true); }
+    });
+    // Clicking the command selects it whole, for anyone who'd rather copy by hand.
+    $("ffmpeg-cmd").addEventListener("click", () => {
+      const range = document.createRange();
+      range.selectNodeContents($("ffmpeg-cmd"));
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    });
+
+    // First run: show the steps unless this same situation was closed before.
+    if (hasNode) {
+      status().then((st) => {
+        noteState(st);
+        if (st.state !== "ok" && store.get("ffmpeg-dismissed", "") !== st.state) render(st);
+      });
+    }
+    return { ensure, check, prompt: () => { ensure(); }, state: () => lastState };
+  })();
+  NC.ffmpeg = ffmpegUi; // render.js calls ensure() before a render, since compression needs FFmpeg
 
   // ---------- Models ----------
   const downloads = {}; // id -> { cancel }
@@ -149,6 +356,12 @@
       const dl = downloads[m.id];
       const row = document.createElement("div");
       row.className = "model" + (m.id === selectedModel ? " sel" : "");
+      // The whole row selects the model, not just the radio. Its buttons
+      // (Download, Delete, cancel) keep their own jobs, as does the radio.
+      row.addEventListener("click", (e) => {
+        if (e.target.closest("button, input") || m.id === selectedModel) return;
+        selectedModel = m.id; store.set("model", m.id); renderModels();
+      });
 
       const radio = document.createElement("input");
       radio.type = "radio"; radio.name = "model"; radio.checked = m.id === selectedModel;
@@ -223,7 +436,8 @@
     const model = NC.models.MODELS.find((m) => m.id === selectedModel);
     if (!model) return log("Pick a model.", true);
     const engineBin = tools.whisper;
-    if (!tools.ffmpeg) return log("FFmpeg is missing. It is required to extract audio from timeline clips; install it or add it to the panel's PATH, then restart Premiere.", true);
+    const ff = await ffmpegUi.ensure(); // shows the install or repair steps when it isn't usable
+    if (!ff.ok) return log(`${ff.error}. It is required to extract audio from timeline clips — follow the steps at the top of the panel.`, true);
     if (!engineBin) return log("The model file is installed, but its small Whisper runtime is missing. Click Get runtime beside this model to download it in the panel.", true);
     if (!NC.models.isInstalled(model)) return log(`Download ${model.name} first.`, true);
 
@@ -898,24 +1112,34 @@
         track = Math.max(0, (parseInt($("track-select").value, 10) || 1) - 1);
       }
 
-      let done = 0;
-      log(`Inserting ${cues.length} captions at their timeline timestamps…`);
-      setBar("progress-fill", 0, cues.length);
-      const until = cues.reduce((m, c) => Math.max(m, c.end), 0);
-      for (let i = 0; i < cues.length; i += BATCH) {
-        $("insert-overlay-text").textContent = `Creating captions… ${done}/${cues.length}`;
-        const r = parseHost(await host("ncInsertBatch", { mogrt, track, first: i === 0, until, cues: cues.slice(i, i + BATCH) }));
+      // In time order: the host finds each placed caption by scanning on
+      // from the previous one (see ncInsertBatch in host.jsx). The list is
+      // in time order anyway, short of an unusual hand-edited SRT.
+      const list = cues.slice().sort((x, y) => x.start - y.start);
+      let done = 0, placed = 0, imported = 0;
+      const t0 = Date.now();
+      log(`Inserting ${list.length} captions at their timeline timestamps…`);
+      setBar("progress-fill", 0, list.length);
+      const until = list.reduce((m, c) => Math.max(m, c.end), 0);
+      for (let i = 0; i < list.length; i += BATCH) {
+        $("insert-overlay-text").textContent = `Creating captions… ${done}/${list.length}`;
+        const r = parseHost(await host("ncInsertBatch", { mogrt, track, first: i === 0, until, cues: list.slice(i, i + BATCH) }));
         done += r.done || 0;
-        setBar("progress-fill", done, cues.length);
+        placed += r.fast || 0;
+        imported += r.slow || 0;
+        setBar("progress-fill", done, list.length);
         if (!r.ok) {
           log(`Caption ${done + 1} failed: ${r.error}`, true);
           if (r.params) log(`Params: ${r.params}`, true);
           break;
         }
       }
-      log(`Inserted ${done} of ${cues.length} captions`);
+      log(`Inserted ${done} of ${list.length} captions in ${((Date.now() - t0) / 1000).toFixed(1)} s.`);
+      if (placed) log(`The template was imported once; the other ${placed} captions were placed from it, which is quicker and redraws less.`);
+      else if (done > 1) log("Each caption was imported separately: the quicker placement didn't check out with this template or Premiere version.");
+      if (placed && imported > 1) log(`${imported - 1} of them were imported separately after a placed caption stopped checking out.`, true);
     } finally {
-      await host("ncRestorePlayhead");
+      await host("ncEndInsertRun");
       setInserting(false);
       refresh();
     }

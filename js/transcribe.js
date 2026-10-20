@@ -4,9 +4,16 @@
   const fs = require("fs");
   const path = require("path");
   const os = require("os");
-  const { spawn } = require("child_process");
+  const { spawn, execFile } = require("child_process");
 
-  const DIRS = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", path.join(os.homedir(), ".local", "bin"), "C:\\Program Files\\ffmpeg\\bin"];
+  // Where ffmpeg, ffprobe and whisper are looked for: Homebrew (Apple Silicon
+  // and Intel), MacPorts, the usual system and user bins, the Windows
+  // default, then whatever was on PATH when Premiere launched. Apps opened
+  // from the Finder get a minimal PATH, so the fixed list comes first. This
+  // is a plain filesystem check each time it runs, so a tool installed while
+  // Premiere is open is found on the next check — no restart needed.
+  const PATH_DIRS = String(process.env.PATH || "").split(path.delimiter).filter(Boolean);
+  const DIRS = ["/opt/homebrew/bin", "/usr/local/bin", "/opt/local/bin", "/usr/bin", path.join(os.homedir(), ".local", "bin"), "C:\\Program Files\\ffmpeg\\bin"].concat(PATH_DIRS);
   const EXE = process.platform === "win32" ? ".exe" : "";
 
   function findBin(names, dirs) {
@@ -112,5 +119,34 @@
     });
   }
 
-  NC.tx = { tools, extractAudio, whisper, mapCueToSequence, tmpWav, probeDuration };
+  // Whether this ffmpeg actually starts. A binary can be present and still
+  // die the instant it launches — in practice Homebrew has upgraded one of
+  // FFmpeg's libraries without rebuilding FFmpeg, and dyld aborts it with
+  // "Library not loaded: …libx265….dylib". An existence check can't see
+  // that, and the failure would otherwise surface as a cryptic crash during
+  // extraction. Resolves { ok: true, version } or { ok: false, error,
+  // missingLib }. A working result is remembered for a minute (the check is
+  // run often while the setup banner is open); a failure is never cached, so
+  // a repair is noticed as soon as it lands.
+  const health = new Map(); // bin -> { at, result }
+  function checkFfmpeg(bin) {
+    return new Promise((resolve) => {
+      const hit = health.get(bin);
+      if (hit && Date.now() - hit.at < 60000) return resolve(hit.result);
+      execFile(bin, ["-version"], { timeout: 10000, maxBuffer: 1024 * 1024 }, (e, stdout, stderr) => {
+        if (!e) {
+          const m = /ffmpeg version (\S+)/.exec(String(stdout));
+          const result = { ok: true, version: m ? m[1] : "" };
+          health.set(bin, { at: Date.now(), result });
+          return resolve(result);
+        }
+        const text = String(stderr || "");
+        const lib = /Library not loaded:\s*(\S+)/.exec(text);
+        const firstLine = text.split("\n").map((l) => l.trim()).find(Boolean) || e.message || "ffmpeg did not start";
+        resolve({ ok: false, error: firstLine.slice(0, 300), missingLib: lib ? path.basename(lib[1]) : "" });
+      });
+    });
+  }
+
+  NC.tx = { tools, checkFfmpeg, extractAudio, whisper, mapCueToSequence, tmpWav, probeDuration };
 })((window.NC = window.NC || {}));
