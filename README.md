@@ -127,11 +127,6 @@ To update later, replace the folder with the new version, or run `git pull` insi
 - **Panel debugging:** while Premiere is running, open <http://localhost:8088> in Chrome. The port is set in `.debug`.
 - **ExtendScript debugging:** use VS Code with Adobe's *ExtendScript Debugger* extension, attached to Premiere.
 
-## Known limitations
-
-- Captions are placed from a single imported template, so inserting them is fast and the Program Monitor no longer flickers. If a placed caption ever fails its checks, the panel falls back to importing that caption on its own, which is slower but safe, and says so in the log.
-- Premiere's scripting can't read keyframe easing, so Copy / Sync All skips animated (keyframed) controls rather than flattening them.
-
 ## License
 
 [MIT](LICENSE). `lib/CSInterface.js` is Adobe's CEP library, distributed under Adobe's own terms.
