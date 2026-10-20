@@ -120,13 +120,6 @@ To update later, replace the folder with the new version, or run `git pull` insi
 | `assets/mogrt/` | Bundled caption MOGRT |
 | `lib/CSInterface.js` | Adobe's CEP library |
 
-## Development
-
-- Edit files in place. Then close and reopen the panel, or right-click it and choose **Reload**.
-- `jsx/host.jsx` is cached by Premiere. Reopen the panel after you change it, and restart Premiere if it still doesn't pick up the change.
-- **Panel debugging:** while Premiere is running, open <http://localhost:8088> in Chrome. The port is set in `.debug`.
-- **ExtendScript debugging:** use VS Code with Adobe's *ExtendScript Debugger* extension, attached to Premiere.
-
 ## License
 
 [MIT](LICENSE). `lib/CSInterface.js` is Adobe's CEP library, distributed under Adobe's own terms.
